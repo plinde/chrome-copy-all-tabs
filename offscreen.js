@@ -14,15 +14,7 @@ function copyViaExecCommand(text) {
 }
 
 async function writeTextToClipboard(text) {
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return;
-    } catch (error) {
-      console.warn("navigator.clipboard failed; trying execCommand fallback", error);
-    }
-  }
-
+  // Offscreen documents can throw on navigator.clipboard. Use execCommand only.
   if (!copyViaExecCommand(text)) {
     throw new Error("Clipboard copy failed.");
   }

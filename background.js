@@ -182,11 +182,9 @@ chrome.action.onClicked.addListener(async (tab) => {
     const settings = await getSettings();
 
     if (settings.enableFormatSelection) {
-      if (tab && typeof tab.windowId === "number") {
-        await chrome.action.openPopup({ windowId: tab.windowId });
-      } else {
-        await chrome.action.openPopup();
-      }
+      // Popup mode is driven by action.setPopup(). Avoid openPopup() here to
+      // prevent runtime errors on Chrome variants where this call is restricted.
+      await applyPopupSetting(true);
       return;
     }
 
