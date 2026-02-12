@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Copy All Tabs",
+  "version": "1.0.0",
+  "description": "Copy all URLs in the current window to the clipboard.",
+  "permissions": ["tabs", "storage", "clipboardWrite", "offscreen", "notifications"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html",
+  "action": {
+    "default_title": "Copy All Tabs"
+  }
+}
