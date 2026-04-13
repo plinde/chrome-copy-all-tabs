@@ -38,8 +38,8 @@ function formatUrls(urls, format) {
   return urls.join("\n");
 }
 
-async function getTabUrlsForCurrentWindow() {
-  const tabs = await chrome.tabs.query({ currentWindow: true });
+async function getTabUrls(windowId) {
+  const tabs = await chrome.tabs.query({ windowId });
   return tabs
     .sort((a, b) => a.index - b.index)
     .map((tab) => tab.url)
@@ -105,8 +105,8 @@ async function copyTextFromBackground(text) {
   }
 }
 
-async function copyCurrentWindowTabUrls(format) {
-  const urls = await getTabUrlsForCurrentWindow();
+async function copyTabUrls(windowId, format) {
+  const urls = await getTabUrls(windowId);
   const text = formatUrls(urls, format);
   await copyTextFromBackground(text);
   return urls.length;
@@ -132,7 +132,7 @@ async function showCopyNotification() {
 }
 
 async function flashSuccessBadge() {
-  await chrome.action.setBadgeBackgroundColor({ color: "#1a73e8" });
+  await chrome.action.setBadgeBackgroundColor({ color: "#00897b" });
   await chrome.action.setBadgeText({ text: SUCCESS_BADGE_TEXT });
   setTimeout(() => {
     chrome.action.setBadgeText({ text: "" }).catch(() => {});
@@ -188,7 +188,7 @@ chrome.action.onClicked.addListener(async (tab) => {
       return;
     }
 
-    await copyCurrentWindowTabUrls(settings.defaultFormat);
+    await copyTabUrls(tab.windowId, settings.defaultFormat);
     try {
       await showCopyNotification();
     } catch (error) {
@@ -207,7 +207,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === "getFormattedTabUrls") {
     const requestedFormat = message.format;
-    getTabUrlsForCurrentWindow()
+    getTabUrls(message.windowId)
       .then((urls) => {
         sendResponse({
           ok: true,
@@ -240,9 +240,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === "copyCurrentWindowTabUrls") {
+  if (message.type === "copyTabUrls") {
     const requestedFormat = message.format;
-    copyCurrentWindowTabUrls(requestedFormat)
+    copyTabUrls(message.windowId, requestedFormat)
       .then((count) => {
         sendResponse({ ok: true, count });
       })

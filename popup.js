@@ -8,6 +8,9 @@ const ALLOWED_FORMATS = new Set(["newline", "csv", "json"]);
 const actionsEl = document.getElementById("actions");
 const statusEl = document.getElementById("status");
 
+// Resolve once at init — the popup always belongs to a specific window.
+const currentWindowId = chrome.windows.getCurrent().then((win) => win.id);
+
 function normalizeFormat(format) {
   return ALLOWED_FORMATS.has(format) ? format : DEFAULT_SETTINGS.defaultFormat;
 }
@@ -28,9 +31,11 @@ function setStatus(message, isError = false) {
 }
 
 async function fetchFormattedUrls(format) {
+  const windowId = await currentWindowId;
   const response = await chrome.runtime.sendMessage({
     type: "getFormattedTabUrls",
     format: normalizeFormat(format),
+    windowId,
   });
 
   if (!response || !response.ok) {
