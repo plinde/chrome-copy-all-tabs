@@ -1,5 +1,6 @@
 const DEFAULT_ENABLE_FORMAT_SELECTION = false;
 const DEFAULT_FORMAT = "newline";
+const DEFAULT_INCLUDE_TITLES = true;
 const ALLOWED_FORMATS = new Set(["newline", "csv", "json"]);
 const OFFSCREEN_DOCUMENT_PATH = "offscreen.html";
 const NOTIFICATION_ICON_PATH = "notification-icon.svg";
@@ -18,38 +19,62 @@ function normalizeSettings(rawSettings = {}) {
         ? rawSettings.enableFormatSelection
         : DEFAULT_ENABLE_FORMAT_SELECTION,
     defaultFormat: normalizeFormat(rawSettings.defaultFormat),
+    includeTitles:
+      typeof rawSettings.includeTitles === "boolean"
+        ? rawSettings.includeTitles
+        : DEFAULT_INCLUDE_TITLES,
   };
 }
 
-function toCsv(urls) {
-  return urls
-    .map((url) => `"${String(url).replace(/"/g, '""')}"`)
-    .join(",");
+function csvQuote(value) {
+  return `"${String(value).replace(/"/g, '""')}"`;
 }
 
-function formatUrls(urls, format) {
+function formatTabs(entries, format, includeTitles) {
   const safeFormat = normalizeFormat(format);
+
   if (safeFormat === "csv") {
-    return toCsv(urls);
+    if (includeTitles) {
+      return entries
+        .map((entry) => `${csvQuote(entry.title)},${csvQuote(entry.url)}`)
+        .join("\n");
+    }
+    return entries.map((entry) => csvQuote(entry.url)).join(",");
   }
+
   if (safeFormat === "json") {
-    return JSON.stringify(urls);
+    if (includeTitles) {
+      return JSON.stringify(
+        entries.map((entry) => ({ title: entry.title, url: entry.url }))
+      );
+    }
+    return JSON.stringify(entries.map((entry) => entry.url));
   }
-  return urls.join("\n");
+
+  if (includeTitles) {
+    return entries
+      .map((entry) => `${entry.title}\n${entry.url}`)
+      .join("\n\n");
+  }
+  return entries.map((entry) => entry.url).join("\n");
 }
 
-async function getTabUrls(windowId) {
+async function getTabEntries(windowId) {
   const tabs = await chrome.tabs.query({ windowId });
   return tabs
     .sort((a, b) => a.index - b.index)
-    .map((tab) => tab.url)
-    .filter((url) => typeof url === "string" && url.length > 0);
+    .filter((tab) => typeof tab.url === "string" && tab.url.length > 0)
+    .map((tab) => ({
+      url: tab.url,
+      title: typeof tab.title === "string" && tab.title.length > 0 ? tab.title : tab.url,
+    }));
 }
 
 async function getSettings() {
   const stored = await chrome.storage.sync.get([
     "enableFormatSelection",
     "defaultFormat",
+    "includeTitles",
   ]);
   return normalizeSettings(stored);
 }
@@ -105,11 +130,11 @@ async function copyTextFromBackground(text) {
   }
 }
 
-async function copyTabUrls(windowId, format) {
-  const urls = await getTabUrls(windowId);
-  const text = formatUrls(urls, format);
+async function copyTabUrls(windowId, format, includeTitles) {
+  const entries = await getTabEntries(windowId);
+  const text = formatTabs(entries, format, includeTitles);
   await copyTextFromBackground(text);
-  return urls.length;
+  return entries.length;
 }
 
 async function showCopyNotification() {
@@ -143,6 +168,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   const stored = await chrome.storage.sync.get([
     "enableFormatSelection",
     "defaultFormat",
+    "includeTitles",
   ]);
   const nextSettings = normalizeSettings(stored);
   const updates = {};
@@ -152,6 +178,9 @@ chrome.runtime.onInstalled.addListener(async () => {
   }
   if (!ALLOWED_FORMATS.has(stored.defaultFormat)) {
     updates.defaultFormat = nextSettings.defaultFormat;
+  }
+  if (typeof stored.includeTitles !== "boolean") {
+    updates.includeTitles = nextSettings.includeTitles;
   }
 
   if (Object.keys(updates).length > 0) {
@@ -188,7 +217,7 @@ chrome.action.onClicked.addListener(async (tab) => {
       return;
     }
 
-    await copyTabUrls(tab.windowId, settings.defaultFormat);
+    await copyTabUrls(tab.windowId, settings.defaultFormat, settings.includeTitles);
     try {
       await showCopyNotification();
     } catch (error) {
@@ -207,12 +236,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === "getFormattedTabUrls") {
     const requestedFormat = message.format;
-    getTabUrls(message.windowId)
-      .then((urls) => {
+    Promise.all([getTabEntries(message.windowId), getSettings()])
+      .then(([entries, settings]) => {
         sendResponse({
           ok: true,
-          text: formatUrls(urls, requestedFormat),
-          count: urls.length,
+          text: formatTabs(entries, requestedFormat, settings.includeTitles),
+          count: entries.length,
         });
       })
       .catch((error) => {
@@ -242,7 +271,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === "copyTabUrls") {
     const requestedFormat = message.format;
-    copyTabUrls(message.windowId, requestedFormat)
+    getSettings()
+      .then((settings) =>
+        copyTabUrls(message.windowId, requestedFormat, settings.includeTitles)
+      )
       .then((count) => {
         sendResponse({ ok: true, count });
       })
