@@ -64,6 +64,7 @@ async function getTabEntries(windowId) {
   return tabs
     .sort((a, b) => a.index - b.index)
     .filter((tab) => typeof tab.url === "string" && tab.url.length > 0)
+    .filter((tab) => !tab.url.startsWith("chrome://"))
     .map((tab) => ({
       url: tab.url,
       title: typeof tab.title === "string" && tab.title.length > 0 ? tab.title : tab.url,
